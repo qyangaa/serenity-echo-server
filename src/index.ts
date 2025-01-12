@@ -91,10 +91,11 @@ app.post("/echo", (req: Request, res: Response) => {
 });
 
 // Journal entry route handler
-async function handleJournalEntry(
-  req: Request<{}, {}, JournalEntry>,
-  res: Response<ApiResponse>
-) {
+const handleJournalEntry: express.RequestHandler<
+  {},
+  ApiResponse,
+  JournalEntry
+> = async (req, res) => {
   console.log(`[${new Date().toISOString()}] Received journal entry request`);
 
   try {
@@ -105,10 +106,11 @@ async function handleJournalEntry(
       console.error(
         `[${new Date().toISOString()}] Missing audio data in request`
       );
-      return res.status(400).json({
+      res.status(400).json({
         error: "Missing audio data",
         message: "Audio data is required",
       });
+      return;
     }
 
     // Validate WebM format
@@ -116,10 +118,11 @@ async function handleJournalEntry(
       console.error(
         `[${new Date().toISOString()}] Invalid audio format - WebM required`
       );
-      return res.status(400).json({
+      res.status(400).json({
         error: "Invalid audio format",
         message: "Audio data must be in WebM format (base64 encoded)",
       });
+      return;
     }
 
     // Log the receipt of data (excluding the actual audio data for clarity)
@@ -135,7 +138,7 @@ async function handleJournalEntry(
     const transcriptionResult = await transcribeAudio(audioBuffer);
     console.log("Transcription completed:", transcriptionResult.text);
 
-    return res.json({
+    res.json({
       success: true,
       message: "Journal entry received and transcribed successfully",
       timestamp: new Date().toISOString(),
@@ -150,12 +153,12 @@ async function handleJournalEntry(
     );
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
-    return res.status(500).json({
+    res.status(500).json({
       error: "Internal Server Error",
       message: errorMessage,
     });
   }
-}
+};
 
 // Register journal route
 app.post("/journal", handleJournalEntry);
