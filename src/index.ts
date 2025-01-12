@@ -1,5 +1,9 @@
-import express, { Request, Response, RequestHandler } from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
+import {
+  transcribeAudio,
+  TranscriptionResult,
+} from "./services/openai.service";
 
 // Types
 interface JournalEntry {
@@ -19,6 +23,7 @@ interface ApiResponse {
   format?: string;
   error?: string;
   status?: string;
+  transcription?: TranscriptionResult;
 }
 
 const app = express();
@@ -86,10 +91,10 @@ app.post("/echo", (req: Request, res: Response) => {
 });
 
 // Journal entry route handler
-const handleJournalEntry: RequestHandler = (
+async function handleJournalEntry(
   req: Request<{}, {}, JournalEntry>,
   res: Response<ApiResponse>
-) => {
+) {
   console.log(`[${new Date().toISOString()}] Received journal entry request`);
 
   try {
@@ -122,18 +127,21 @@ const handleJournalEntry: RequestHandler = (
     console.log("Audio data length:", audioData.length);
     console.log("Audio format validation: Passed WebM check");
 
-    // Here you would typically:
-    // 1. Save the audio file
-    // 2. Process the audio
-    // 3. Store metadata
-    // For now, we'll just acknowledge receipt
+    // Convert base64 to buffer for transcription
+    const audioBuffer = Buffer.from(audioData, "base64");
+
+    // Transcribe the audio
+    console.log("Starting audio transcription...");
+    const transcriptionResult = await transcribeAudio(audioBuffer);
+    console.log("Transcription completed:", transcriptionResult.text);
 
     return res.json({
       success: true,
-      message: "Journal entry received successfully",
+      message: "Journal entry received and transcribed successfully",
       timestamp: new Date().toISOString(),
       metadata,
       format: "webm",
+      transcription: transcriptionResult,
     });
   } catch (error) {
     console.error(
@@ -147,7 +155,7 @@ const handleJournalEntry: RequestHandler = (
       message: errorMessage,
     });
   }
-};
+}
 
 // Register journal route
 app.post("/journal", handleJournalEntry);
