@@ -16,6 +16,33 @@ export interface TranscriptionResult {
   duration?: number;
   language?: string;
   error?: string;
+  summary?: string;
+}
+
+export async function summarizeText(text: string): Promise<string> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a concise summarizer that creates brief, clear bullet points in markdown format. Extract only the key points and insights. Keep it to 2-4 bullet points maximum.",
+        },
+        {
+          role: "user",
+          content: `Summarize this journal entry in bullet points:\n${text}`,
+        },
+      ],
+      max_tokens: 150,
+      temperature: 0.5,
+    });
+
+    return response.choices[0]?.message?.content || "- No summary generated";
+  } catch (error) {
+    console.error("Error generating summary:", error);
+    throw error;
+  }
 }
 
 export async function transcribeAudio(
@@ -35,10 +62,21 @@ export async function transcribeAudio(
       response_format: "json",
     });
 
+    // Generate summary if transcription is successful
+    let summary: string | undefined;
+    if (transcription.text) {
+      try {
+        summary = await summarizeText(transcription.text);
+      } catch (error) {
+        console.error("Error generating summary:", error);
+      }
+    }
+
     return {
       text: transcription.text,
-      duration: audioBuffer.length, // approximate duration based on buffer size
+      duration: audioBuffer.length,
       language: "en",
+      summary,
     };
   } catch (error) {
     console.error("Error transcribing audio:", error);
