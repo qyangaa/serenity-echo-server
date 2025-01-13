@@ -22,4 +22,8 @@ npm-debug.log*
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Firebase
+*firebase-adminsdk*.json
+firebase-debug.log 
