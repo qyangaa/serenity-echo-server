@@ -23,29 +23,69 @@ const journalCollection = db.collection("journal_entries");
 export interface JournalEntryData {
   id?: string;
   timestamp: string;
-  transcription: string;
-  summary?: string;
-  audioLength: number;
-  metadata?: {
-    duration?: string;
-    type?: string;
-    [key: string]: any;
-  };
+  entries: Array<{
+    timestamp: string;
+    transcription: string;
+    summary?: string;
+    audioLength: number;
+    metadata?: {
+      duration?: string;
+      type?: string;
+      [key: string]: any;
+    };
+  }>;
 }
 
-export async function saveJournalEntry(
-  data: JournalEntryData
+export async function createNewJournalEntry(
+  data: Omit<JournalEntryData["entries"][0], "timestamp">
 ): Promise<string> {
   try {
-    const docRef = await journalCollection.add({
-      ...data,
+    const timestamp = new Date().toISOString();
+    const docData: JournalEntryData & {
+      createdAt: admin.firestore.FieldValue;
+    } = {
+      timestamp,
+      entries: [
+        {
+          timestamp,
+          ...data,
+        },
+      ],
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
 
-    console.log(`Journal entry saved with ID: ${docRef.id}`);
+    const docRef = await journalCollection.add(docData);
+    console.log(`New journal entry created with ID: ${docRef.id}`);
     return docRef.id;
   } catch (error) {
-    console.error("Error saving journal entry:", error);
+    console.error("Error creating journal entry:", error);
+    throw error;
+  }
+}
+
+export async function appendToJournalEntry(
+  journalId: string,
+  data: Omit<JournalEntryData["entries"][0], "timestamp">
+): Promise<void> {
+  try {
+    const timestamp = new Date().toISOString();
+    const docRef = journalCollection.doc(journalId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      throw new Error(`Journal entry with ID ${journalId} not found`);
+    }
+
+    await docRef.update({
+      entries: admin.firestore.FieldValue.arrayUnion({
+        timestamp,
+        ...data,
+      }),
+    });
+
+    console.log(`Appended to journal entry ${journalId}`);
+  } catch (error) {
+    console.error("Error appending to journal entry:", error);
     throw error;
   }
 }
@@ -73,14 +113,68 @@ export async function getJournalEntry(
   try {
     const doc = await journalCollection.doc(id).get();
     if (!doc.exists) {
+      console.log(`Journal entry with ID ${id} not found`);
+      return null;
+    }
+    const data = doc.data();
+    if (!data) {
+      console.log(`No data found for journal entry with ID ${id}`);
       return null;
     }
     return {
       id: doc.id,
-      ...(doc.data() as JournalEntryData),
+      ...(data as JournalEntryData),
     };
   } catch (error) {
     console.error("Error fetching journal entry:", error);
-    throw error;
+    return null;
+  }
+}
+
+export async function getLatestJournalEntry(): Promise<JournalEntryData | null> {
+  try {
+    const snapshot = await journalCollection
+      .orderBy("createdAt", "desc")
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      console.log("No journal entries found");
+      return null;
+    }
+
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+
+    if (!data) {
+      console.log(`No data found for latest journal entry with ID ${doc.id}`);
+      return null;
+    }
+
+    // Handle old format (flat structure)
+    if (!data.entries) {
+      return {
+        id: doc.id,
+        timestamp: data.timestamp,
+        entries: [
+          {
+            timestamp: data.timestamp,
+            transcription: data.transcription,
+            summary: data.summary,
+            audioLength: data.audioLength,
+            metadata: data.metadata,
+          },
+        ],
+      };
+    }
+
+    // Handle new format (entries array)
+    return {
+      id: doc.id,
+      ...(data as JournalEntryData),
+    };
+  } catch (error) {
+    console.error("Error fetching latest journal entry:", error);
+    return null; // Return null instead of throwing error
   }
 }
