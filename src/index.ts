@@ -4,6 +4,11 @@ import {
   transcribeAudio,
   TranscriptionResult,
 } from "./services/openai.service";
+import {
+  saveJournalEntry,
+  getJournalEntries,
+  getJournalEntry,
+} from "./services/firebase.service";
 
 // Types
 interface JournalEntry {
@@ -24,6 +29,7 @@ interface ApiResponse {
   error?: string;
   status?: string;
   transcription?: TranscriptionResult;
+  journalId?: string;
 }
 
 const app = express();
@@ -138,13 +144,24 @@ const handleJournalEntry: express.RequestHandler<
     const transcriptionResult = await transcribeAudio(audioBuffer);
     console.log("Transcription completed:", transcriptionResult.text);
 
+    // Save to Firestore
+    const timestamp = new Date().toISOString();
+    const journalId = await saveJournalEntry({
+      timestamp,
+      transcription: transcriptionResult.text,
+      summary: transcriptionResult.summary,
+      audioLength: audioBuffer.length,
+      metadata,
+    });
+
     res.json({
       success: true,
-      message: "Journal entry received and transcribed successfully",
-      timestamp: new Date().toISOString(),
+      message: "Journal entry received, transcribed, and saved successfully",
+      timestamp,
       metadata,
       format: "webm",
       transcription: transcriptionResult,
+      journalId,
     });
   } catch (error) {
     console.error(
@@ -159,6 +176,43 @@ const handleJournalEntry: express.RequestHandler<
     });
   }
 };
+
+// Get all journal entries
+app.get("/journal", async (_req: Request, res: Response) => {
+  try {
+    const entries = await getJournalEntries();
+    res.json(entries);
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: errorMessage,
+    });
+  }
+});
+
+// Get specific journal entry
+app.get("/journal/:id", async (req: Request, res: Response) => {
+  try {
+    const entry = await getJournalEntry(req.params.id);
+    if (!entry) {
+      res.status(404).json({
+        error: "Not Found",
+        message: "Journal entry not found",
+      });
+      return;
+    }
+    res.json(entry);
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: errorMessage,
+    });
+  }
+});
 
 // Register journal route
 app.post("/journal", handleJournalEntry);
